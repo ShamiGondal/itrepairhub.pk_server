@@ -1,0 +1,13 @@
+node_modules
+.env
+.DS_Store
+.next
+.next/
+.next/types
+.next/dev/types
+.next/static
+.next/static/
+.next/static/chunks/
+.next/static/chunks/pages/
+.next/static/chunks/app/
+.next/static/chunks/app/page/
