@@ -26,9 +26,9 @@ JWT_SECRET=itrepairhub.pk
 
 ## UploadThing Configuration
 ```
-UPLOADTHING_SECRET=sk_live_be660b67bc1e2790eadc6483871415010c7821297bf33ba29af663afb376ff90
-UPLOADTHING_TOKEN=eyJhcGlLZXkiOiJza19saXZlX2JlNjYwYjY3YmMxZTI3OTBlYWRjNjQ4Mzg3MTQxNTAxMGM3ODIxMjk3YmYzM2JhMjlhZjY2M2FmYjM3NmZmOTAiLCJhcHBJZCI6Inp4eWU1YW85dnQiLCJyZWdpb25zIjpbInNlYTEiXX0=
-UPLOADTHING_APP_ID=zxye5ao9vt
+UPLOADTHING_SECRET=your_uploadthing_secret_key_here
+UPLOADTHING_TOKEN=your_uploadthing_token_here
+UPLOADTHING_APP_ID=your_uploadthing_app_id_here
 ```
 
 ## Google OAuth (Optional)

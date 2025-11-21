@@ -12,17 +12,19 @@ USE itrepairhub;
 CREATE TABLE `users` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `full_name` VARCHAR(255) NOT NULL,
-  `email` VARCHAR(255) NOT NULL UNIQUE,
-  `phone_number` VARCHAR(50) NULL UNIQUE,
+  `email` VARCHAR(255) NOT NULL,
+  `phone_number` VARCHAR(50) NULL,
   `password_hash` VARCHAR(255) NULL,
   `auth_provider` ENUM('local', 'google') NOT NULL DEFAULT 'local',
   `provider_id` VARCHAR(255) NULL,
   `role` ENUM('customer', 'business', 'admin', 'technician') NOT NULL DEFAULT 'customer',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `email` (`email`),
+  UNIQUE KEY `phone_number` (`phone_number`),
   INDEX `idx_email` (`email`),
   INDEX `idx_provider_id` (`provider_id`),
   INDEX `idx_role` (`role`)
-) COMMENT='Central table for all users. Role "technician" is used for bookings.';
+) COMMENT='Central table for all users.';
 
 CREATE TABLE `companies` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -54,9 +56,11 @@ CREATE TABLE `addresses` (
 CREATE TABLE `service_categories` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(255) NOT NULL,
-  `slug` VARCHAR(255) NOT NULL UNIQUE COMMENT 'For SEO-friendly URLs',
+  `image_url` VARCHAR(1024) NULL COMMENT 'Category thumbnail/icon',
+  `slug` VARCHAR(255) NOT NULL COMMENT 'For SEO-friendly URLs',
   `seo_title` VARCHAR(255) NULL,
   `meta_description` TEXT NULL,
+  UNIQUE KEY `slug` (`slug`),
   INDEX `idx_slug` (`slug`)
 ) COMMENT='Categories for services (e.g., Mobile, Laptop, Software).';
 
@@ -64,22 +68,36 @@ CREATE TABLE `services` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `category_id` INT NULL,
   `name` VARCHAR(255) NOT NULL,
-  `slug` VARCHAR(255) NOT NULL UNIQUE,
-  `image_url` VARCHAR(1024) NULL COMMENT 'Primary image for the service',
-  `short_description` TEXT NULL,
-  `long_description` TEXT NULL,
+  `slug` VARCHAR(255) NOT NULL,
+  `short_description` TEXT NULL COMMENT 'Summary text for listings',
+  `long_description` TEXT NULL COMMENT 'HTML content for Description Tab',
+  `specifications` JSON NULL COMMENT 'Key-Value pairs for Additional Info Tab',
   `service_type` ENUM('hardware', 'software') NOT NULL,
   `price_type` ENUM('variable', 'fixed') NOT NULL,
   `price` DECIMAL(10, 2) NULL COMMENT 'Used only if price_type is fixed',
+  `average_rating` DECIMAL(3, 2) DEFAULT 0.00,
+  `review_count` INT DEFAULT 0,
   `warranty_info` VARCHAR(255) NULL COMMENT 'e.g., 30-day service warranty',
   `seo_title` VARCHAR(255) NULL,
   `meta_description` TEXT NULL,
-  `is_active` BOOLEAN NOT NULL DEFAULT true,
-  `section` VARCHAR(100) NULL COMMENT 'e.g., featured_services, homepage' AFTER `is_active`,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `section` VARCHAR(100) NULL COMMENT 'e.g., featured_services, homepage',
+  UNIQUE KEY `slug` (`slug`),
   FOREIGN KEY (`category_id`) REFERENCES `service_categories`(`id`) ON DELETE SET NULL,
   INDEX `idx_slug` (`slug`),
   INDEX `idx_section` (`section`)
 ) COMMENT='Catalog of all repair and software services offered.';
+
+CREATE TABLE `service_images` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `service_id` INT NOT NULL,
+  `image_url` VARCHAR(1024) NOT NULL,
+  `alt_text` VARCHAR(255) NULL COMMENT 'SEO Alt Text specific to this image',
+  `display_order` INT NOT NULL DEFAULT 0 COMMENT '0 = Main Thumbnail, 1,2,3.. = Gallery',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`service_id`) REFERENCES `services`(`id`) ON DELETE CASCADE,
+  INDEX `idx_service_order` (`service_id`, `display_order`)
+) COMMENT='Gallery images for services';
 
 CREATE TABLE `bookings` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -118,9 +136,11 @@ CREATE TABLE `consultations` (
 CREATE TABLE `product_categories` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(255) NOT NULL,
-  `slug` VARCHAR(255) NOT NULL UNIQUE,
+  `image_url` VARCHAR(1024) NULL COMMENT 'Category thumbnail/icon',
+  `slug` VARCHAR(255) NOT NULL,
   `seo_title` VARCHAR(255) NULL,
   `meta_description` TEXT NULL,
+  UNIQUE KEY `slug` (`slug`),
   INDEX `idx_slug` (`slug`)
 ) COMMENT='Categories for products (e.g., Used Market, Laptops, Accessories).';
 
@@ -128,24 +148,39 @@ CREATE TABLE `products` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `category_id` INT NULL,
   `name` VARCHAR(255) NOT NULL,
-  `slug` VARCHAR(255) NOT NULL UNIQUE,
-  `sku` VARCHAR(100) NOT NULL UNIQUE,
+  `slug` VARCHAR(255) NOT NULL,
+  `sku` VARCHAR(100) NOT NULL,
   `condition` ENUM('new', 'used') NOT NULL,
   `price` DECIMAL(10, 2) NOT NULL,
   `stock_quantity` INT NOT NULL DEFAULT 0,
+  `average_rating` DECIMAL(3, 2) DEFAULT 0.00,
+  `review_count` INT DEFAULT 0,
   `warranty_info` VARCHAR(255) NULL COMMENT 'e.g., 1 Year IT Hub Warranty',
-  `specifications` JSON NULL COMMENT 'Flexible specs (RAM, CPU, etc.)',
-  `description` TEXT NULL,
-  `image_urls` JSON NULL COMMENT 'JSON array of image URLs for gallery',
+  `specifications` JSON NULL COMMENT 'JSON for Additional Info Tab (Table view)',
+  `short_description` TEXT NULL COMMENT 'Summary text for listings',
+  `long_description` TEXT NULL COMMENT 'HTML for Description Tab (Bullets/Text)',
   `seo_title` VARCHAR(255) NULL,
   `meta_description` TEXT NULL,
-  `is_active` BOOLEAN NOT NULL DEFAULT true,
-  `section` VARCHAR(100) NULL COMMENT 'e.g., featured_products, daily_deal' AFTER `is_active`,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `section` VARCHAR(100) NULL COMMENT 'e.g., featured_products, daily_deal',
+  UNIQUE KEY `slug` (`slug`),
+  UNIQUE KEY `sku` (`sku`),
   FOREIGN KEY (`category_id`) REFERENCES `product_categories`(`id`) ON DELETE SET NULL,
   INDEX `idx_slug` (`slug`),
   INDEX `idx_sku` (`sku`),
   INDEX `idx_section` (`section`)
 ) COMMENT='Catalog for all physical items (new and used).';
+
+CREATE TABLE `product_images` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `product_id` INT NOT NULL,
+  `image_url` VARCHAR(1024) NOT NULL,
+  `alt_text` VARCHAR(255) NULL COMMENT 'SEO Alt Text specific to this image',
+  `display_order` INT NOT NULL DEFAULT 0 COMMENT '0 = Main Thumbnail, 1,2,3.. = Gallery',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
+  INDEX `idx_product_order` (`product_id`, `display_order`)
+) COMMENT='Gallery images for products';
 
 -- ---------------------------------
 -- 4. Modules 3 & 5: Procurement (Sell-to-Us)
@@ -234,7 +269,7 @@ CREATE TABLE `payments` (
 ) COMMENT='Dedicated table to track all payment transactions.';
 
 -- ---------------------------------
--- 6. NEW: Site Content & Media
+-- 6. Content: Site Media & Reviews
 -- ---------------------------------
 
 CREATE TABLE `site_media` (
@@ -246,8 +281,25 @@ CREATE TABLE `site_media` (
   `device_version` ENUM('desktop', 'mobile', 'all') NOT NULL DEFAULT 'all' COMMENT 'Specifies if media is for desktop, mobile, or all devices',
   `title` VARCHAR(255) NULL COMMENT 'Internal reference title',
   `display_order` INT NOT NULL DEFAULT 0 COMMENT 'For sorting items in a carousel',
-  `is_active` BOOLEAN NOT NULL DEFAULT true,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  -- NEW, more comprehensive index for filtering
   INDEX `idx_media_filter` (`section`, `device_version`, `media_type`, `is_active`)
 ) COMMENT='Manages all site-wide media like hero images and videos.';
+
+CREATE TABLE `reviews` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `product_id` INT NULL,
+  `service_id` INT NULL,
+  `rating` TINYINT NOT NULL,
+  `title` VARCHAR(100) NULL COMMENT 'Short summary for SEO snippets',
+  `comment` TEXT NULL,
+  `is_verified_purchase` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Trust signal for SEO',
+  `is_approved` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'For moderation',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`service_id`) REFERENCES `services`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `chk_review_target` CHECK (`product_id` IS NOT NULL OR `service_id` IS NOT NULL),
+  CONSTRAINT `reviews_chk_1` CHECK ((`rating` between 1 and 5))
+) COMMENT='Stores user reviews for products and services.';
