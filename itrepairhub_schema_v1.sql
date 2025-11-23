@@ -88,7 +88,7 @@ CREATE TABLE `services` (
   `service_type` ENUM('hardware', 'software') NOT NULL,
   `price_type` ENUM('variable', 'fixed') NOT NULL,
   `price` DECIMAL(10, 2) NULL,
-  `discount_percentage` DECIMAL(5, 2) DEFAULT 0.00 COMMENT 'Direct sale (e.g., 10.00 for 10%)',
+  `discount_percentage` DECIMAL(5, 2) DEFAULT 0.00,
   `average_rating` DECIMAL(3, 2) DEFAULT 0.00,
   `review_count` INT DEFAULT 0,
   `warranty_info` VARCHAR(255) NULL,
@@ -120,10 +120,10 @@ CREATE TABLE `bookings` (
   `service_id` INT NOT NULL,
   `address_id` INT NULL,
   `technician_id` INT NULL,
-  `quoted_amount` DECIMAL(10, 2) NULL COMMENT 'Base price at booking time',
-  `discount_amount` DECIMAL(10, 2) DEFAULT 0.00 COMMENT 'Amount reduced by promo',
-  `total_amount` DECIMAL(10, 2) NULL COMMENT 'Final to pay',
-  `coupon_code` VARCHAR(50) NULL COMMENT 'Promo code used',
+  `quoted_amount` DECIMAL(10, 2) NULL,
+  `discount_amount` DECIMAL(10, 2) DEFAULT 0.00,
+  `total_amount` DECIMAL(10, 2) NULL,
+  `coupon_code` VARCHAR(50) NULL,
   `booking_date` DATE NOT NULL,
   `booking_time` TIME NOT NULL,
   `status` ENUM('pending', 'confirmed', 'completed', 'cancelled') NOT NULL DEFAULT 'pending',
@@ -173,7 +173,7 @@ CREATE TABLE `products` (
   `sku` VARCHAR(100) NOT NULL,
   `condition` ENUM('new', 'used') NOT NULL,
   `price` DECIMAL(10, 2) NOT NULL,
-  `discount_percentage` DECIMAL(5, 2) DEFAULT 0.00 COMMENT 'Direct sale (e.g., 10.00 for 10%)',
+  `discount_percentage` DECIMAL(5, 2) DEFAULT 0.00,
   `stock_quantity` INT NOT NULL DEFAULT 0,
   `average_rating` DECIMAL(3, 2) DEFAULT 0.00,
   `review_count` INT DEFAULT 0,
@@ -206,7 +206,7 @@ CREATE TABLE `product_images` (
 
 CREATE TABLE `promo_codes` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `code` VARCHAR(50) NOT NULL COMMENT 'e.g., SUMMER20',
+  `code` VARCHAR(50) NOT NULL,
   `discount_type` ENUM('percentage', 'fixed_amount') NOT NULL,
   `discount_value` DECIMAL(10, 2) NOT NULL,
   `min_order_amount` DECIMAL(10, 2) DEFAULT 0.00,
@@ -224,22 +224,31 @@ CREATE TABLE `promo_codes` (
 
 CREATE TABLE `sell_requests` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT NULL,
-  `guest_id` INT NULL,
+  `user_id` INT NOT NULL COMMENT 'MUST be Registered',
   `request_type` ENUM('check_price', 'sell_item') NOT NULL,
   `device_type` VARCHAR(100) NOT NULL,
   `brand` VARCHAR(100) NULL,
   `model` VARCHAR(100) NULL,
   `specifications` JSON NOT NULL,
-  `condition_notes` TEXT NULL,
+  `condition_notes` JSON NULL,
+  `user_requested_price` DECIMAL(10, 2) NULL,
   `estimated_price` DECIMAL(10, 2) NULL,
   `final_offer_price` DECIMAL(10, 2) NULL,
   `status` ENUM('submitted', 'inspection_pending', 'purchased', 'rejected') NOT NULL DEFAULT 'submitted',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
-  FOREIGN KEY (`guest_id`) REFERENCES `guest_details`(`id`) ON DELETE CASCADE,
-  CONSTRAINT `chk_sell_owner` CHECK (`user_id` IS NOT NULL OR `guest_id` IS NOT NULL)
-) COMMENT='Inbox for selling items.';
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) COMMENT='Inbox for selling items (Registered Users Only).';
+
+CREATE TABLE `sell_request_images` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `sell_request_id` INT NOT NULL,
+  `image_url` VARCHAR(1024) NOT NULL,
+  `alt_text` VARCHAR(255) NULL,
+  `display_order` INT NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`sell_request_id`) REFERENCES `sell_requests`(`id`) ON DELETE CASCADE,
+  INDEX `idx_request_images` (`sell_request_id`)
+) COMMENT='Images uploaded by users for sell/price-check requests';
 
 CREATE TABLE `pc_components` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -266,10 +275,10 @@ CREATE TABLE `orders` (
   `user_id` INT NULL,
   `guest_id` INT NULL,
   `address_id` INT NULL,
-  `subtotal` DECIMAL(10, 2) NOT NULL COMMENT 'Sum of items before coupon',
-  `discount_amount` DECIMAL(10, 2) DEFAULT 0.00 COMMENT 'Amount removed by coupon',
-  `total_amount` DECIMAL(10, 2) NOT NULL COMMENT 'Final: Subtotal - Discount',
-  `coupon_code` VARCHAR(50) NULL COMMENT 'Code used for history',
+  `subtotal` DECIMAL(10, 2) NOT NULL,
+  `discount_amount` DECIMAL(10, 2) DEFAULT 0.00,
+  `total_amount` DECIMAL(10, 2) NOT NULL,
+  `coupon_code` VARCHAR(50) NULL,
   `order_status` ENUM('pending', 'processing', 'shipped', 'delivered', 'cancelled') NOT NULL DEFAULT 'pending',
   `payment_status` ENUM('unpaid', 'paid', 'refunded') NOT NULL DEFAULT 'unpaid',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -292,6 +301,47 @@ CREATE TABLE `order_items` (
   CONSTRAINT `chk_item` CHECK (`product_id` IS NOT NULL OR `custom_build_id` IS NOT NULL)
 ) COMMENT='Line items for an order.';
 
+CREATE TABLE `carts` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NULL,
+  `guest_id` INT NULL,
+  `session_id` VARCHAR(255) NULL,
+  `coupon_code` VARCHAR(50) NULL,
+  `subtotal` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `discount_amount` DECIMAL(10, 2) DEFAULT 0.00,
+  `total_amount` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`guest_id`) REFERENCES `guest_details`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `chk_cart_owner` CHECK (`user_id` IS NOT NULL OR `guest_id` IS NOT NULL OR `session_id` IS NOT NULL),
+  INDEX `idx_user_cart` (`user_id`),
+  INDEX `idx_guest_cart` (`guest_id`),
+  INDEX `idx_session_cart` (`session_id`)
+) COMMENT='Shopping cart for products.';
+
+CREATE TABLE `cart_items` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `cart_id` INT NOT NULL,
+  `product_id` INT NULL,
+  `service_id` INT NULL,
+  `quantity` INT NOT NULL DEFAULT 1,
+  `price_at_added` DECIMAL(10, 2) NOT NULL,
+  `discount_percentage` DECIMAL(5, 2) DEFAULT 0.00,
+  `discounted_price` DECIMAL(10, 2) NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (`cart_id`) REFERENCES `carts`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE RESTRICT,
+  FOREIGN KEY (`service_id`) REFERENCES `services`(`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_cart_item_type` CHECK (`product_id` IS NOT NULL OR `service_id` IS NOT NULL),
+  UNIQUE KEY `unique_cart_product` (`cart_id`, `product_id`),
+  UNIQUE KEY `unique_cart_service` (`cart_id`, `service_id`),
+  INDEX `idx_cart_items` (`cart_id`),
+  INDEX `idx_product_id` (`product_id`),
+  INDEX `idx_service_id` (`service_id`)
+) COMMENT='Individual items in shopping cart.';
+
 CREATE TABLE `payments` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT NULL,
@@ -311,7 +361,7 @@ CREATE TABLE `payments` (
 ) COMMENT='Dedicated table to track all payment transactions.';
 
 -- ---------------------------------
--- 5. Content: Site Media & Reviews
+-- 7. Content: Site Media & Reviews
 -- ---------------------------------
 
 CREATE TABLE `site_media` (

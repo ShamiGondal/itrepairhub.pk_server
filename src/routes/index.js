@@ -8,7 +8,10 @@ import serviceCategoryRoutes from './serviceCategory.routes.js';
 import serviceRoutes from './service.routes.js';
 import productCategoryRoutes from './productCategory.routes.js';
 import productRoutes from './product.routes.js';
+import usedLaptopRoutes from './usedLaptop.routes.js';
 import promoCodeRoutes from './promoCode.routes.js';
+import cartRoutes from './cart.routes.js';
+import orderRoutes from './order.routes.js';
 
 const router = Router();
 
@@ -21,7 +24,10 @@ router.use('/service-categories', serviceCategoryRoutes);
 router.use('/services', serviceRoutes);
 router.use('/product-categories', productCategoryRoutes);
 router.use('/products', productRoutes);
+router.use('/used-laptops-marketplace', usedLaptopRoutes);
 router.use('/promo-codes', promoCodeRoutes);
+router.use('/cart', cartRoutes);
+router.use('/orders', orderRoutes);
 
 export default router;
 
