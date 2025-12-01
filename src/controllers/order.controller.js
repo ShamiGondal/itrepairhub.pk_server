@@ -76,7 +76,7 @@ export async function createOrder(req, res) {
 
     const cart = cartRows[0];
 
-    // Get cart items (only products, exclude services)
+    // Get cart items (products and custom PC builds, exclude services)
     const [cartItemsRows] = await db.query(
       `SELECT 
         ci.*,
@@ -84,10 +84,13 @@ export async function createOrder(req, res) {
         p.stock_quantity as current_stock,
         p.is_active as product_is_active,
         p.price as current_price,
-        p.discount_percentage as current_discount_percentage
+        p.discount_percentage as current_discount_percentage,
+        cpb.id as custom_build_exists,
+        cpb.total_estimated_price as custom_build_price
       FROM cart_items ci
-      INNER JOIN products p ON ci.product_id = p.id
-      WHERE ci.cart_id = ? AND ci.product_id IS NOT NULL`,
+      LEFT JOIN products p ON ci.product_id = p.id
+      LEFT JOIN custom_pc_builds cpb ON ci.custom_build_id = cpb.id
+      WHERE ci.cart_id = ? AND (ci.product_id IS NOT NULL OR ci.custom_build_id IS NOT NULL)`,
       [cart.id]
     );
 
@@ -99,22 +102,34 @@ export async function createOrder(req, res) {
       });
     }
 
-    // Step 2: Validate all products are still available and in stock
+    // Step 2: Validate all products are still available and in stock (skip validation for custom builds)
     for (const item of cartItemsRows) {
-      if (!item.product_is_active) {
-        await db.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          message: `Product "${item.product_name}" is no longer available`,
-        });
-      }
+      if (item.product_id) {
+        // Validate product items
+        if (!item.product_is_active) {
+          await db.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: `Product "${item.product_name}" is no longer available`,
+          });
+        }
 
-      if (item.current_stock < item.quantity) {
-        await db.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for "${item.product_name}". Only ${item.current_stock} available, but ${item.quantity} requested.`,
-        });
+        if (item.current_stock < item.quantity) {
+          await db.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: `Insufficient stock for "${item.product_name}". Only ${item.current_stock} available, but ${item.quantity} requested.`,
+          });
+        }
+      } else if (item.custom_build_id) {
+        // Validate custom build exists
+        if (!item.custom_build_exists) {
+          await db.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: 'Custom PC build no longer exists',
+          });
+        }
       }
     }
 
@@ -123,21 +138,38 @@ export async function createOrder(req, res) {
     const orderItemsData = [];
 
     for (const item of cartItemsRows) {
-      // Use price snapshot from cart (price_at_added) but apply current discount if different
-      const itemPrice = parseFloat(item.price_at_added) || 0;
-      const itemDiscountPercentage = parseFloat(item.discount_percentage) || 0;
-      const itemDiscountedPrice = itemDiscountPercentage > 0
-        ? itemPrice * (1 - itemDiscountPercentage / 100)
-        : itemPrice;
+      let itemPriceAtPurchase = 0;
       
-      const itemTotal = itemDiscountedPrice * item.quantity;
+      if (item.custom_build_id) {
+        // Custom PC Build item - use discounted_price directly (already calculated)
+        itemPriceAtPurchase = parseFloat(item.discounted_price) || 0;
+      } else {
+        // Product item - use price snapshot from cart (price_at_added) but apply current discount if different
+        const itemPrice = parseFloat(item.price_at_added) || 0;
+        const itemDiscountPercentage = parseFloat(item.discount_percentage) || 0;
+        itemPriceAtPurchase = itemDiscountPercentage > 0
+          ? itemPrice * (1 - itemDiscountPercentage / 100)
+          : itemPrice;
+      }
+      
+      const itemTotal = itemPriceAtPurchase * item.quantity;
       recalculatedSubtotal += itemTotal;
 
-      orderItemsData.push({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        price_at_purchase: parseFloat(itemDiscountedPrice.toFixed(2)),
-      });
+      if (item.custom_build_id) {
+        // Custom PC Build item
+        orderItemsData.push({
+          custom_build_id: item.custom_build_id,
+          quantity: item.quantity,
+          price_at_purchase: parseFloat(itemPriceAtPurchase.toFixed(2)),
+        });
+      } else {
+        // Product item
+        orderItemsData.push({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          price_at_purchase: parseFloat(itemPriceAtPurchase.toFixed(2)),
+        });
+      }
     }
 
     recalculatedSubtotal = parseFloat(recalculatedSubtotal.toFixed(2));
@@ -338,17 +370,28 @@ export async function createOrder(req, res) {
 
     // Step 6: Create order_items from cart_items
     for (const itemData of orderItemsData) {
-      await db.query(
-        `INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase) 
-         VALUES (?, ?, ?, ?)`,
-        [orderId, itemData.product_id, itemData.quantity, itemData.price_at_purchase]
-      );
+      if (itemData.custom_build_id) {
+        // Custom PC Build item
+        await db.query(
+          `INSERT INTO order_items (order_id, custom_build_id, quantity, price_at_purchase) 
+           VALUES (?, ?, ?, ?)`,
+          [orderId, itemData.custom_build_id, itemData.quantity, itemData.price_at_purchase]
+        );
+      } else if (itemData.product_id) {
+        // Product item
+        await db.query(
+          `INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase) 
+           VALUES (?, ?, ?, ?)`,
+          [orderId, itemData.product_id, itemData.quantity, itemData.price_at_purchase]
+        );
 
-      // Update product stock
-      await db.query(
-        'UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?',
-        [itemData.quantity, itemData.product_id]
-      );
+        // Update product stock
+        await db.query(
+          'UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?',
+          [itemData.quantity, itemData.product_id]
+        );
+      }
+      // Note: Service items don't need stock updates
     }
 
     // Step 7: Create payment record

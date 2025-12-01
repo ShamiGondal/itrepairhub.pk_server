@@ -21,6 +21,27 @@ export function initDb() {
     connectTimeout: 10000, // 10 seconds timeout for connection
   };
 
+  /**
+   * Enable TLS/SSL when connecting to managed databases (e.g. TiDB Serverless)
+   * that reject insecure/plaintext connections.
+   *
+   * - Controlled via DB_SSL env flag so localhost dev keeps working without TLS.
+   * - For most managed MySQL-compatible services, an empty ssl object is
+   *   enough to enable encrypted transport. If you need strict certificate
+   *   verification, you can provide CA / cert paths via env and extend below.
+   */
+  const shouldUseSsl =
+    (process.env.DB_SSL || '').trim().toLowerCase() === 'true' ||
+    (process.env.DB_HOST || '').includes('tidbcloud.com');
+
+  if (shouldUseSsl) {
+    // Basic TLS - encryption without strict CA verification by default.
+    // This is usually acceptable for development and many managed services.
+    dbConfig.ssl = {
+      minVersion: 'TLSv1.2',
+    };
+  }
+
   pool = mysql.createPool(dbConfig);
 
   return pool;

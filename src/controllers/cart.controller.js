@@ -190,13 +190,14 @@ export async function getCart(req, res) {
     // Get or create cart
     const cart = await getOrCreateCart(userId, guestId, sessionId);
     
-    // Fetch cart items with product and service details (SEO-optimized: Single query with LEFT JOINs)
+    // Fetch cart items with product, service, and custom build details (SEO-optimized: Single query with LEFT JOINs)
     const [itemRows] = await db.query(
       `SELECT 
         ci.id,
         ci.cart_id,
         ci.product_id,
         ci.service_id,
+        ci.custom_build_id,
         ci.quantity,
         ci.price_at_added,
         ci.discount_percentage,
@@ -209,18 +210,23 @@ export async function getCart(req, res) {
         s.name as service_name,
         s.slug as service_slug,
         s.is_active as service_is_active,
-        s.price_type
+        s.price_type,
+        cpb.id as custom_build_id_value,
+        cpb.total_estimated_price as custom_build_price,
+        cpb.configuration_data as custom_build_config
       FROM cart_items ci
       LEFT JOIN products p ON ci.product_id = p.id
       LEFT JOIN services s ON ci.service_id = s.id
+      LEFT JOIN custom_pc_builds cpb ON ci.custom_build_id = cpb.id
       WHERE ci.cart_id = ?
       ORDER BY ci.created_at ASC`,
       [cart.id]
     );
     
-    // Separate products and services
+    // Separate products, services, and custom builds
     const productItems = itemRows.filter(item => item.product_id);
     const serviceItems = itemRows.filter(item => item.service_id);
+    const customBuildItems = itemRows.filter(item => item.custom_build_id);
     
     // Fetch product images (SEO-optimized: Single query for all images)
     const productIds = productItems.map(item => item.product_id);
@@ -280,6 +286,7 @@ export async function getCart(req, res) {
           id: item.id,
           product_id: item.product_id,
           service_id: null,
+          custom_build_id: null,
           product_name: item.product_name,
           product_slug: item.product_slug,
           sku: item.sku,
@@ -292,12 +299,13 @@ export async function getCart(req, res) {
           image_url: imagesMap[item.product_id]?.find(img => img.display_order === 0)?.image_url || null,
           images: imagesMap[item.product_id] || [],
         };
-      } else {
+      } else if (item.service_id) {
         // Service item
         return {
           id: item.id,
           product_id: null,
           service_id: item.service_id,
+          custom_build_id: null,
           service_name: item.service_name,
           service_slug: item.service_slug,
           quantity: item.quantity,
@@ -308,6 +316,40 @@ export async function getCart(req, res) {
           is_active: item.service_is_active === 1,
           image_url: serviceImagesMap[item.service_id]?.find(img => img.display_order === 0)?.image_url || null,
           images: serviceImagesMap[item.service_id] || [],
+        };
+      } else if (item.custom_build_id) {
+        // Custom PC Build item
+        // Handle configuration_data - MySQL JSON columns are auto-parsed, but check if it's a string
+        let configData = null;
+        if (item.custom_build_config) {
+          if (typeof item.custom_build_config === 'string') {
+            try {
+              configData = JSON.parse(item.custom_build_config);
+            } catch (e) {
+              console.error('Failed to parse custom_build_config:', e);
+              configData = null;
+            }
+          } else {
+            // Already an object (MySQL JSON column auto-parsed)
+            configData = item.custom_build_config;
+          }
+        }
+        
+        return {
+          id: item.id,
+          product_id: null,
+          service_id: null,
+          custom_build_id: item.custom_build_id,
+          custom_build_name: 'Custom PC Build',
+          quantity: item.quantity,
+          price_at_added: parseFloat(item.price_at_added),
+          discount_percentage: parseFloat(item.discount_percentage),
+          discounted_price: parseFloat(item.discounted_price),
+          total_estimated_price: parseFloat(item.custom_build_price || 0),
+          configuration_data: configData,
+          is_active: true,
+          image_url: null,
+          images: [],
         };
       }
     });

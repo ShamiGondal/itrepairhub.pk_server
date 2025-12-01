@@ -234,9 +234,12 @@ CREATE TABLE `sell_requests` (
   `user_requested_price` DECIMAL(10, 2) NULL,
   `estimated_price` DECIMAL(10, 2) NULL,
   `final_offer_price` DECIMAL(10, 2) NULL,
+  `address_id` INT NULL COMMENT 'Pickup/delivery address for the sell request',
+  `contact_number` VARCHAR(50) NULL COMMENT 'Optional contact number for pickup coordination',
   `status` ENUM('submitted', 'inspection_pending', 'purchased', 'rejected') NOT NULL DEFAULT 'submitted',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`address_id`) REFERENCES `addresses`(`id`) ON DELETE SET NULL
 ) COMMENT='Inbox for selling items (Registered Users Only).';
 
 CREATE TABLE `sell_request_images` (
@@ -250,25 +253,30 @@ CREATE TABLE `sell_request_images` (
   INDEX `idx_request_images` (`sell_request_id`)
 ) COMMENT='Images uploaded by users for sell/price-check requests';
 
-CREATE TABLE `pc_components` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `type` ENUM('CPU', 'GPU', 'RAM', 'Motherboard', 'Casing', 'PSU', 'Storage') NOT NULL,
-  `name` VARCHAR(255) NOT NULL,
-  `price` DECIMAL(10, 2) NOT NULL,
-  `specs` JSON NULL,
-  `stock_quantity` INT NOT NULL DEFAULT 0,
-  `image_url` VARCHAR(1024) NULL,
-  INDEX `idx_type` (`type`)
-) COMMENT='Inventory for the PC Builder module.';
-
 CREATE TABLE `custom_pc_builds` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT NULL,
   `total_estimated_price` DECIMAL(10, 2) NOT NULL,
   `configuration_data` JSON NOT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  INDEX `idx_user_id` (`user_id`)
 ) COMMENT='Saved user PC configurations.';
+
+CREATE TABLE `pc_compatibility_rules` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `rule_type` ENUM('max_quantity', 'socket_compatibility', 'form_factor', 'power_requirement', 'memory_type', 'storage_interface', 'custom') NOT NULL,
+  `category_id` INT NULL COMMENT 'Applies to products in this category (e.g., RAM category)',
+  `rule_name` VARCHAR(255) NOT NULL,
+  `rule_config` JSON NOT NULL COMMENT 'Flexible JSON configuration for different rule types',
+  `error_message` TEXT NOT NULL COMMENT 'User-friendly error message when rule is violated',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (`category_id`) REFERENCES `product_categories`(`id`) ON DELETE CASCADE,
+  INDEX `idx_category_active` (`category_id`, `is_active`),
+  INDEX `idx_rule_type` (`rule_type`)
+) COMMENT='Dynamic compatibility rules for PC Builder validation.';
 
 CREATE TABLE `orders` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -325,6 +333,7 @@ CREATE TABLE `cart_items` (
   `cart_id` INT NOT NULL,
   `product_id` INT NULL,
   `service_id` INT NULL,
+  `custom_build_id` INT NULL,
   `quantity` INT NOT NULL DEFAULT 1,
   `price_at_added` DECIMAL(10, 2) NOT NULL,
   `discount_percentage` DECIMAL(5, 2) DEFAULT 0.00,
@@ -334,12 +343,15 @@ CREATE TABLE `cart_items` (
   FOREIGN KEY (`cart_id`) REFERENCES `carts`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE RESTRICT,
   FOREIGN KEY (`service_id`) REFERENCES `services`(`id`) ON DELETE RESTRICT,
-  CONSTRAINT `chk_cart_item_type` CHECK (`product_id` IS NOT NULL OR `service_id` IS NOT NULL),
+  FOREIGN KEY (`custom_build_id`) REFERENCES `custom_pc_builds`(`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_cart_item_type` CHECK (`product_id` IS NOT NULL OR `service_id` IS NOT NULL OR `custom_build_id` IS NOT NULL),
   UNIQUE KEY `unique_cart_product` (`cart_id`, `product_id`),
   UNIQUE KEY `unique_cart_service` (`cart_id`, `service_id`),
+  UNIQUE KEY `unique_cart_custom_build` (`cart_id`, `custom_build_id`),
   INDEX `idx_cart_items` (`cart_id`),
   INDEX `idx_product_id` (`product_id`),
-  INDEX `idx_service_id` (`service_id`)
+  INDEX `idx_service_id` (`service_id`),
+  INDEX `idx_custom_build_id` (`custom_build_id`)
 ) COMMENT='Individual items in shopping cart.';
 
 CREATE TABLE `payments` (
@@ -380,7 +392,9 @@ CREATE TABLE `site_media` (
 
 CREATE TABLE `reviews` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT NOT NULL,
+  `user_id` INT NULL COMMENT 'User ID for logged-in user reviews, NULL for guest reviews',
+  `guest_email` VARCHAR(255) NULL,
+  `guest_name` VARCHAR(255) NULL,
   `product_id` INT NULL,
   `service_id` INT NULL,
   `rating` TINYINT NOT NULL,
@@ -393,5 +407,32 @@ CREATE TABLE `reviews` (
   FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`service_id`) REFERENCES `services`(`id`) ON DELETE CASCADE,
   CONSTRAINT `chk_review_target` CHECK (`product_id` IS NOT NULL OR `service_id` IS NOT NULL),
-  CONSTRAINT `reviews_chk_1` CHECK ((`rating` between 1 and 5))
-) COMMENT='Stores user reviews for products and services.';
+  CONSTRAINT `reviews_chk_1` CHECK ((`rating` between 1 and 5)),
+  INDEX `idx_guest_email` (`guest_email`)
+) COMMENT='Stores user reviews for products and services, including guest reviews.';
+
+-- ---------------------------------
+-- 8. Contact & Online Queries
+-- ---------------------------------
+
+CREATE TABLE `online_queries` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NULL COMMENT 'Optional: logged-in user submitting the query/complaint',
+  `email` VARCHAR(255) NOT NULL,
+  `phone` VARCHAR(50) NULL,
+  `full_name` VARCHAR(255) NULL,
+  `type` ENUM('query', 'complaint') NOT NULL DEFAULT 'query',
+  `related_to` ENUM('product', 'service', 'other') NOT NULL DEFAULT 'other',
+  `product_id` INT NULL,
+  `service_id` INT NULL,
+  `subject` VARCHAR(255) NULL,
+  `message` TEXT NOT NULL,
+  `status` ENUM('new', 'in_progress', 'resolved', 'closed') NOT NULL DEFAULT 'new',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE SET NULL,
+  FOREIGN KEY (`service_id`) REFERENCES `services`(`id`) ON DELETE SET NULL,
+  INDEX `idx_online_queries_status` (`status`),
+  INDEX `idx_online_queries_created` (`created_at`),
+  INDEX `idx_online_queries_email` (`email`)
+) COMMENT='Stores online queries and complaints submitted via the contact page.';

@@ -303,6 +303,9 @@ export async function createSellRequest(req, res) {
       condition_notes,
       user_requested_price,
       images,
+      address_id,
+      new_address,
+      contact_number,
     } = req.body;
 
     // Validation
@@ -337,109 +340,173 @@ export async function createSellRequest(req, res) {
 
     const db = getDb();
 
-    // Insert sell request
-    const [result] = await db.query(
-      `INSERT INTO sell_requests (
-        user_id,
-        request_type,
-        device_type,
-        brand,
-        model,
-        specifications,
-        condition_notes,
-        user_requested_price,
-        status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
-      [
-        userId,
-        request_type,
-        device_type,
-        brand || null,
-        model || null,
-        JSON.stringify(specifications),
-        condition_notes ? JSON.stringify(condition_notes) : null,
-        user_requested_price || null,
-      ]
-    );
+    // Begin transaction for address handling
+    await db.query('START TRANSACTION');
 
-    const sellRequestId = result.insertId;
+    try {
+      let finalAddressId = address_id || null;
 
-    // Insert images if provided
-    if (images && Array.isArray(images) && images.length > 0) {
-      const imageValues = images.map((img, index) => [
-        sellRequestId,
-        img.url || img.image_url,
-        img.alt_text || `${device_type} ${brand || ''} ${model || ''} - Image ${index + 1}`.trim(),
-        index,
-      ]);
+      // Handle address: validate existing or create new
+      if (address_id) {
+        // Validate that address belongs to user
+        const [addressRows] = await db.query(
+          'SELECT id FROM addresses WHERE id = ? AND user_id = ? LIMIT 1',
+          [address_id, userId]
+        );
 
-      await db.query(
-        `INSERT INTO sell_request_images (sell_request_id, image_url, alt_text, display_order)
-         VALUES ?`,
-        [imageValues]
+        if (addressRows.length === 0) {
+          await db.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid address_id or address does not belong to user',
+          });
+        }
+
+        finalAddressId = address_id;
+      } else if (new_address) {
+        // Create new address for logged-in user
+        const { label, line_1, line_2, city, state, postal_code } = new_address;
+
+        if (!line_1 || !city || !postal_code) {
+          await db.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            message: 'new_address requires line_1, city, and postal_code',
+          });
+        }
+
+        const [addressResult] = await db.query(
+          `INSERT INTO addresses (user_id, label, line_1, line_2, city, state, postal_code) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            label?.trim() || null,
+            line_1.trim(),
+            line_2?.trim() || null,
+            city.trim(),
+            state?.trim() || null,
+            postal_code.trim(),
+          ]
+        );
+
+        finalAddressId = addressResult.insertId;
+      }
+      // If neither address_id nor new_address provided, finalAddressId remains null (optional)
+
+      // Insert sell request
+      const [result] = await db.query(
+        `INSERT INTO sell_requests (
+          user_id,
+          request_type,
+          device_type,
+          brand,
+          model,
+          specifications,
+          condition_notes,
+          user_requested_price,
+          address_id,
+          contact_number,
+          status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
+        [
+          userId,
+          request_type,
+          device_type,
+          brand || null,
+          model || null,
+          JSON.stringify(specifications),
+          condition_notes ? JSON.stringify(condition_notes) : null,
+          user_requested_price || null,
+          finalAddressId,
+          contact_number?.trim() || null,
+        ]
       );
-    }
 
-    // Fetch complete sell request with images
-    const [sellRequests] = await db.query(
-      `SELECT 
-        sr.*
-      FROM sell_requests sr
-      WHERE sr.id = ?`,
-      [sellRequestId]
-    );
+      const sellRequestId = result.insertId;
 
-    const sellRequest = sellRequests[0];
-    if (sellRequest) {
-      // Parse JSON fields - handle both string and object types
-      if (typeof sellRequest.specifications === 'string') {
-        try {
-          sellRequest.specifications = JSON.parse(sellRequest.specifications);
-        } catch (e) {
-          sellRequest.specifications = {};
-        }
-      } else if (!sellRequest.specifications) {
-        sellRequest.specifications = {};
-      }
-      // If it's already an object, keep it as is
+      // Insert images if provided
+      if (images && Array.isArray(images) && images.length > 0) {
+        const imageValues = images.map((img, index) => [
+          sellRequestId,
+          img.url || img.image_url,
+          img.alt_text || `${device_type} ${brand || ''} ${model || ''} - Image ${index + 1}`.trim(),
+          index,
+        ]);
 
-      if (sellRequest.condition_notes) {
-        if (typeof sellRequest.condition_notes === 'string') {
-          try {
-            sellRequest.condition_notes = JSON.parse(sellRequest.condition_notes);
-          } catch (e) {
-            sellRequest.condition_notes = null;
-          }
-        }
-        // If it's already an object, keep it as is
-      } else {
-        sellRequest.condition_notes = null;
+        await db.query(
+          `INSERT INTO sell_request_images (sell_request_id, image_url, alt_text, display_order)
+           VALUES ?`,
+          [imageValues]
+        );
       }
 
-      // Fetch images separately
-      const [imageRows] = await db.query(
-        `SELECT id, image_url, alt_text, display_order
-         FROM sell_request_images
-         WHERE sell_request_id = ?
-         ORDER BY display_order ASC`,
+      // Commit transaction
+      await db.query('COMMIT');
+
+      // Fetch complete sell request with images
+      const [sellRequests] = await db.query(
+        `SELECT 
+          sr.*
+        FROM sell_requests sr
+        WHERE sr.id = ?`,
         [sellRequestId]
       );
 
-      sellRequest.images = imageRows.map(img => ({
-        id: img.id,
-        image_url: img.image_url,
-        alt_text: img.alt_text,
-        display_order: img.display_order,
-      }));
-    }
+      const sellRequest = sellRequests[0];
+      if (sellRequest) {
+        // Parse JSON fields - handle both string and object types
+        if (typeof sellRequest.specifications === 'string') {
+          try {
+            sellRequest.specifications = JSON.parse(sellRequest.specifications);
+          } catch (e) {
+            sellRequest.specifications = {};
+          }
+        } else if (!sellRequest.specifications) {
+          sellRequest.specifications = {};
+        }
+        // If it's already an object, keep it as is
 
-    return res.status(201).json({
-      success: true,
-      message: request_type === 'check_price' 
-        ? 'Price estimation request submitted successfully'
-        : 'Sell request submitted successfully',
-      data: sellRequest,
-    });
+        if (sellRequest.condition_notes) {
+          if (typeof sellRequest.condition_notes === 'string') {
+            try {
+              sellRequest.condition_notes = JSON.parse(sellRequest.condition_notes);
+            } catch (e) {
+              sellRequest.condition_notes = null;
+            }
+          }
+          // If it's already an object, keep it as is
+        } else {
+          sellRequest.condition_notes = null;
+        }
+
+        // Fetch images separately
+        const [imageRows] = await db.query(
+          `SELECT id, image_url, alt_text, display_order
+           FROM sell_request_images
+           WHERE sell_request_id = ?
+           ORDER BY display_order ASC`,
+          [sellRequestId]
+        );
+
+        sellRequest.images = imageRows.map(img => ({
+          id: img.id,
+          image_url: img.image_url,
+          alt_text: img.alt_text,
+          display_order: img.display_order,
+        }));
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: request_type === 'check_price' 
+          ? 'Price estimation request submitted successfully'
+          : 'Sell request submitted successfully',
+        data: sellRequest,
+      });
+    } catch (innerErr) {
+      await db.query('ROLLBACK');
+      throw innerErr; // Re-throw to outer catch
+    }
   } catch (err) {
     console.error('Create sell request error:', err);
     return res.status(500).json({

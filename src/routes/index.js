@@ -12,6 +12,9 @@ import usedLaptopRoutes from './usedLaptop.routes.js';
 import promoCodeRoutes from './promoCode.routes.js';
 import cartRoutes from './cart.routes.js';
 import orderRoutes from './order.routes.js';
+import pcBuilderRoutes from './pcBuilder.routes.js';
+import reviewRoutes from './review.routes.js';
+import onlineQueryRoutes from './onlineQuery.routes.js';
 
 const router = Router();
 
@@ -28,6 +31,9 @@ router.use('/used-laptops-marketplace', usedLaptopRoutes);
 router.use('/promo-codes', promoCodeRoutes);
 router.use('/cart', cartRoutes);
 router.use('/orders', orderRoutes);
+router.use('/pc-builder', pcBuilderRoutes);
+router.use('/reviews', reviewRoutes);
+router.use('/online-queries', onlineQueryRoutes);
 
 export default router;
 
