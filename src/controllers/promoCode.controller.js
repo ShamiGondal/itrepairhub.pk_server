@@ -102,6 +102,44 @@ export async function validatePromoCode(req, res) {
 }
 
 /**
+ * Get promo code by ID
+ * Admin only - requires authentication
+ */
+export async function getPromoCodeById(req, res) {
+  try {
+    const { id } = req.params;
+    const db = getDb();
+
+    const [rows] = await db.query(
+      `SELECT 
+        id, code, discount_type, discount_value, min_order_amount, 
+        usage_limit, used_count, expires_at, is_active, created_at
+      FROM promo_codes 
+      WHERE id = ? LIMIT 1`,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Promo code not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: rows[0],
+    });
+  } catch (err) {
+    console.error('Get promo code error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch promo code',
+    });
+  }
+}
+
+/**
  * Get all promo codes
  * Admin only - requires authentication
  * SEO-optimized: Single SELECT query

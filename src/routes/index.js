@@ -12,9 +12,19 @@ import usedLaptopRoutes from './usedLaptop.routes.js';
 import promoCodeRoutes from './promoCode.routes.js';
 import cartRoutes from './cart.routes.js';
 import orderRoutes from './order.routes.js';
+import adminOrderRoutes from './admin_order.routes.js';
+import adminBookingRoutes from './admin_booking.routes.js';
+import adminUserRoutes from './admin_user.routes.js';
+import adminSellRequestRoutes from './admin_sell_request.routes.js';
+import adminReviewRoutes from './admin_review.routes.js';
+import adminConsultationRoutes from './admin_consultation.routes.js';
+import adminPCBuilderRoutes from './admin_pc_builder.routes.js';
+import adminSettingsRoutes from './admin_settings.routes.js';
+import adminDashboardRoutes from './admin_dashboard.routes.js';
 import pcBuilderRoutes from './pcBuilder.routes.js';
 import reviewRoutes from './review.routes.js';
 import onlineQueryRoutes from './onlineQuery.routes.js';
+import sectionRoutes from './section.routes.js';
 
 const router = Router();
 
@@ -31,9 +41,19 @@ router.use('/used-laptops-marketplace', usedLaptopRoutes);
 router.use('/promo-codes', promoCodeRoutes);
 router.use('/cart', cartRoutes);
 router.use('/orders', orderRoutes);
+router.use('/admin/orders', adminOrderRoutes);
+router.use('/admin/bookings', adminBookingRoutes);
+router.use('/admin/users', adminUserRoutes);
+router.use('/admin/sell-requests', adminSellRequestRoutes);
+router.use('/admin/reviews', adminReviewRoutes);
+router.use('/admin/consultations', adminConsultationRoutes);
+router.use('/admin/pc-builder', adminPCBuilderRoutes);
+router.use('/admin/settings', adminSettingsRoutes);
+router.use('/admin/dashboard', adminDashboardRoutes);
 router.use('/pc-builder', pcBuilderRoutes);
 router.use('/reviews', reviewRoutes);
 router.use('/online-queries', onlineQueryRoutes);
+router.use('/sections', sectionRoutes);
 
 export default router;
 

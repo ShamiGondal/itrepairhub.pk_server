@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../config/db.config.js';
+import { metaAPI } from '../utils/metaConversionsAPI.js';
 
 const JWT_EXPIRES_IN = '7d';
 
@@ -54,6 +55,22 @@ export async function register(req, res) {
     };
 
     const token = signToken(user);
+
+    // Track CompleteRegistration event with Meta Conversions API (non-blocking)
+    setImmediate(async () => {
+      try {
+        await metaAPI.trackCompleteRegistration(req, {
+          userId: user.id,
+          email: email,
+          phone: phone_number,
+          first_name: full_name?.split(' ')[0],
+          last_name: full_name?.split(' ').slice(1).join(' '),
+          eventSourceUrl: req.headers.referer || req.headers.origin,
+        });
+      } catch (metaError) {
+        console.error('Meta CAPI CompleteRegistration tracking error:', metaError.message);
+      }
+    });
 
     return res.status(201).json({
       success: true,
@@ -127,6 +144,22 @@ export async function registerB2B(req, res) {
       };
 
       const token = signToken(user);
+
+      // Track CompleteRegistration event for B2B with Meta Conversions API (non-blocking)
+      setImmediate(async () => {
+        try {
+          await metaAPI.trackCompleteRegistration(req, {
+            userId: user.id,
+            email: email,
+            phone: phone_number,
+            first_name: full_name?.split(' ')[0],
+            last_name: full_name?.split(' ').slice(1).join(' '),
+            eventSourceUrl: req.headers.referer || req.headers.origin,
+          });
+        } catch (metaError) {
+          console.error('Meta CAPI CompleteRegistration (B2B) tracking error:', metaError.message);
+        }
+      });
 
       return res.status(201).json({
         success: true,
@@ -218,6 +251,149 @@ export async function login(req, res) {
       success: false, 
       message: 'Login failed',
       error: process.env.NODE_ENV !== 'production' ? err.message : undefined
+    });
+  }
+}
+
+/**
+ * Admin Login - Special endpoint for admin panel
+ * Allows Google-authenticated admins to access admin panel
+ * For local admins: verifies password
+ * For Google admins: allows direct access (they're already authenticated via Google)
+ */
+export async function adminLogin(req, res) {
+  try {
+    const { email, password } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const db = getDb();
+
+    // Execute database query with error handling
+    let rows;
+    try {
+      [rows] = await db.query(
+        'SELECT id, full_name, email, password_hash, role, auth_provider FROM users WHERE email = ? LIMIT 1',
+        [email]
+      );
+    } catch (dbError) {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please check if MySQL is running and configured correctly.' 
+      });
+    }
+
+    if (rows.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    const userRow = rows[0];
+
+    // Check if user is admin
+    if (userRow.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied. Admin privileges required.' 
+      });
+    }
+
+    // Handle Google-authenticated admin users
+    if (userRow.auth_provider === 'google') {
+      // Google users don't have passwords, so we allow them direct access
+      // They're already authenticated via Google on the frontend
+      const user = {
+        id: userRow.id,
+        full_name: userRow.full_name,
+        email: userRow.email,
+        role: userRow.role,
+      };
+
+      const token = signToken(user);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          user,
+          token,
+        },
+        message: 'Admin access granted',
+      });
+    }
+
+    // Handle local admin users - verify password
+    if (userRow.auth_provider === 'local') {
+      if (!password) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Password is required for local accounts' 
+        });
+      }
+
+      const isMatch = await bcrypt.compare(password, userRow.password_hash || '');
+      if (!isMatch) {
+        return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      }
+
+      const user = {
+        id: userRow.id,
+        full_name: userRow.full_name,
+        email: userRow.email,
+        role: userRow.role,
+      };
+
+      const token = signToken(user);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          user,
+          token,
+        },
+      });
+    }
+
+    // Fallback for other auth providers
+    return res.status(400).json({
+      success: false,
+      message: `Unsupported authentication provider: ${userRow.auth_provider}`,
+    });
+  } catch (err) {
+    if (err.message && err.message.includes('timeout')) {
+      return res.status(503).json({ success: false, message: 'Database connection timeout. Please check if MySQL is running.' });
+    }
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Admin login failed',
+      error: process.env.NODE_ENV !== 'production' ? err.message : undefined
+    });
+  }
+}
+
+/**
+ * Verify token endpoint
+ * Used by admin panel to validate stored tokens
+ */
+export function verifyToken(req, res) {
+  try {
+    // User is already set by isAuth middleware
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: req.user,
+      },
+    });
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      message: 'Token verification failed',
     });
   }
 }

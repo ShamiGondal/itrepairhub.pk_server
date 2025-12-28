@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "SEO-first, high-performance backend API for IT Repair Hub",
   "dependencies": {
+    "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
     "cors": "^2.8.5",

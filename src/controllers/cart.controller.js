@@ -1,4 +1,5 @@
 import { getDb } from '../config/db.config.js';
+import { metaAPI } from '../utils/metaConversionsAPI.js';
 
 /**
  * Get or create cart for user/guest
@@ -521,6 +522,24 @@ export async function addToCart(req, res) {
     
     await db.query('COMMIT');
     
+    // Track AddToCart event with Meta Conversions API (non-blocking)
+    setImmediate(async () => {
+      try {
+        const cartItemId = existingItemRows.length > 0 ? existingItemRows[0].id : cart.id;
+        await metaAPI.trackAddToCart(req, {
+          cartItemId: cartItemId,
+          productId: product_id,
+          productName: product.name,
+          price: finalDiscountedPrice,
+          quantity: qty,
+          currency: 'PKR',
+          eventSourceUrl: req.headers.referer || req.headers.origin,
+        });
+      } catch (metaError) {
+        console.error('Meta CAPI AddToCart tracking error:', metaError.message);
+      }
+    });
+    
     // Return updated cart
     return getCart(req, res);
   } catch (err) {
@@ -649,6 +668,24 @@ export async function addServiceToCart(req, res) {
     await calculateCartTotals(cart.id);
     
     await db.query('COMMIT');
+    
+    // Track AddToCart event for service with Meta Conversions API (non-blocking)
+    setImmediate(async () => {
+      try {
+        const cartItemId = existingItemRows.length > 0 ? existingItemRows[0].id : cart.id;
+        await metaAPI.trackAddToCart(req, {
+          cartItemId: cartItemId,
+          serviceId: service_id,
+          serviceName: service.name,
+          price: finalDiscountedPrice,
+          quantity: qty,
+          currency: 'PKR',
+          eventSourceUrl: req.headers.referer || req.headers.origin,
+        });
+      } catch (metaError) {
+        console.error('Meta CAPI AddToCart (service) tracking error:', metaError.message);
+      }
+    });
     
     // Return updated cart
     return getCart(req, res);

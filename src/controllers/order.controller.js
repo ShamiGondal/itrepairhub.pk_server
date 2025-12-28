@@ -1,4 +1,5 @@
 import { getDb } from '../config/db.config.js';
+import { metaAPI } from '../utils/metaConversionsAPI.js';
 
 /**
  * Create order from cart
@@ -462,6 +463,52 @@ export async function createOrder(req, res) {
       'SELECT id, user_id, guest_id, order_id, amount, gateway, transaction_id, status, created_at FROM payments WHERE order_id = ? LIMIT 1',
       [orderId]
     );
+
+    // Track Purchase event with Meta Conversions API (non-blocking)
+    // This runs asynchronously and won't block the response
+    setImmediate(async () => {
+      try {
+        // Extract product IDs from order items for event tracking
+        const productIds = orderItemsData
+          .filter(item => item.product_id)
+          .map(item => String(item.product_id));
+
+        // Prepare user data for Meta CAPI
+        let userData = {};
+        if (finalGuestId && guest_details) {
+          userData = {
+            email: guest_details.email,
+            phone: guest_details.phone_number,
+            first_name: guest_details.full_name?.split(' ')[0],
+            last_name: guest_details.full_name?.split(' ').slice(1).join(' '),
+            city: guest_details.city,
+            state: guest_details.state,
+            zip: guest_details.postal_code,
+            country: 'pk',
+          };
+        } else if (req.user) {
+          userData = {
+            email: req.user.email,
+            phone: req.user.phone_number,
+            first_name: req.user.full_name?.split(' ')[0],
+            last_name: req.user.full_name?.split(' ').slice(1).join(' '),
+          };
+        }
+
+        await metaAPI.trackPurchase(req, {
+          orderId: orderId,
+          totalAmount: finalTotalAmountRounded,
+          currency: 'PKR',
+          productIds: productIds,
+          itemCount: orderItemsData.length,
+          eventSourceUrl: req.headers.referer || req.headers.origin,
+          userData: userData,
+        });
+      } catch (metaError) {
+        // Log but don't throw - Meta tracking is non-critical
+        console.error('Meta CAPI Purchase tracking error:', metaError.message);
+      }
+    });
 
     return res.status(201).json({
       success: true,

@@ -4,6 +4,7 @@ import { isAdmin } from '../middleware/admin.middleware.js';
 import {
   validatePromoCode,
   getAllPromoCodes,
+  getPromoCodeById,
   createPromoCode,
   updatePromoCode,
   deletePromoCode,
@@ -11,12 +12,13 @@ import {
 
 const router = Router();
 
-// Public endpoint - validate promo code
+// Public endpoint - validate promo code (must come before /:id)
 router.get('/validate', validatePromoCode);
 
 // Admin endpoints - require authentication and admin role
 router.get('/', isAuth, isAdmin, getAllPromoCodes);
 router.post('/', isAuth, isAdmin, createPromoCode);
+router.get('/:id', isAuth, isAdmin, getPromoCodeById);
 router.put('/:id', isAuth, isAdmin, updatePromoCode);
 router.delete('/:id', isAuth, isAdmin, deletePromoCode);
 

@@ -23,9 +23,21 @@ configurePassport();
 initUploadThing();
 
 // Core middlewares tuned for API performance & SEO-friendly SSR consumers
-app.use(helmet());
+// Configure Helmet with CORS-friendly settings
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false,
+}));
+
+// CORS configuration - Accept requests from everywhere
+// If CORS_ORIGIN is '*' or not set, allow all origins (using true instead of '*' because credentials: true)
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: process.env.CORS_ORIGIN === '*' || !process.env.CORS_ORIGIN ? true : process.env.CORS_ORIGIN,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  optionsSuccessStatus: 200,
 }));
 app.use(compression());
 app.use(express.json());

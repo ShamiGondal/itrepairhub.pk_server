@@ -1,0 +1,243 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    META CONVERSIONS API - HOW IT WORKS                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────┐
+│   Customer       │
+│   Actions        │
+└────────┬─────────┘
+         │
+         │ 1. Customer adds to cart, registers, or purchases
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          FRONTEND (Next.js)                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  Meta Pixel (Already Installed in layout.tsx)                       │ │
+│  │  fbq('init', '1230498898985591');                                   │ │
+│  │  fbq('track', 'PageView');                                          │ │
+│  │  + Tracks client-side events                                        │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│         │                                                                  │
+│         │ 2. Sends API request                                             │
+│         ▼                                                                  │
+└────────────────────────────────────────────────────────────────────────────┘
+         │
+         │ POST /v1/orders or /v1/cart or /v1/auth/register
+         │ + Customer data (email, phone, etc.)
+         │ + Cookies (_fbp, _fbc if available)
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                       BACKEND (Express.js + MySQL)                         │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  STEP 1: Process Request                                            │ │
+│  │  ├─ Validate data                                                   │ │
+│  │  ├─ Create order/cart/user in database                             │ │
+│  │  └─ Return success response to customer                            │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│         │                                                                  │
+│         │ Customer gets instant response (no delay!)                       │
+│         │                                                                  │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  STEP 2: Track Event (Async, Non-Blocking)                         │ │
+│  │  setImmediate(async () => {                                        │ │
+│  │    ├─ Extract customer data (email, phone, name, etc.)            │ │
+│  │    ├─ Hash PII data (SHA-256)                                     │ │
+│  │    │    email: "user@example.com"                                 │ │
+│  │    │    → "7b17fb0bd...068" (hashed)                              │ │
+│  │    ├─ Add event metadata (price, product IDs, etc.)              │ │
+│  │    └─ Send to Meta Conversions API                               │ │
+│  │  });                                                              │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│         │                                                                  │
+└─────────┼──────────────────────────────────────────────────────────────────┘
+          │
+          │ 3. HTTP POST to Meta API
+          │ https://graph.facebook.com/v21.0/1230498898985591/events
+          │
+          ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                       META CONVERSIONS API                                 │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  Receives Event:                                                    │ │
+│  │  {                                                                  │ │
+│  │    "data": [{                                                       │ │
+│  │      "event_name": "Purchase",                                     │ │
+│  │      "event_time": 1735430400,                                     │ │
+│  │      "action_source": "website",                                   │ │
+│  │      "user_data": {                                                │ │
+│  │        "em": ["7b17fb...068"],  ← Hashed email                    │ │
+│  │        "ph": ["8a3d45...234"],  ← Hashed phone                    │ │
+│  │        "fn": ["9c2a11...456"],  ← Hashed first name               │ │
+│  │        "client_ip_address": "103.244.x.x",  ← NOT hashed          │ │
+│  │        "client_user_agent": "Mozilla/5.0...",  ← NOT hashed       │ │
+│  │        "fbp": "_fb.1.xxx",      ← Meta Pixel browser ID            │ │
+│  │        "fbc": "fb.1.xxx"        ← Meta click ID                    │ │
+│  │      },                                                             │ │
+│  │      "custom_data": {                                              │ │
+│  │        "currency": "PKR",                                          │ │
+│  │        "value": 15000,                                             │ │
+│  │        "content_ids": ["123", "456"]                               │ │
+│  │      }                                                              │ │
+│  │    }]                                                               │ │
+│  │  }                                                                  │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│         │                                                                  │
+│         │ 4. Meta processes event                                          │
+│         │    ├─ Matches hashed data to Facebook users                     │
+│         │    ├─ Deduplicates with Pixel events (same event_id)           │
+│         │    └─ Updates ad attribution and analytics                      │
+│         │                                                                  │
+└─────────┼──────────────────────────────────────────────────────────────────┘
+          │
+          │ 5. Response
+          │ {"events_received": 1, "fbtrace_id": "ABC123..."}
+          │
+          ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                      BACKEND LOGS RESPONSE                                 │
+│  ✅ [Meta CAPI] Purchase event sent successfully                          │
+│     eventId: 'order_123_1735430400000'                                    │
+│     eventsReceived: 1                                                      │
+│     fbtrace_id: 'ABC123...'                                               │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    DEDUPLICATION (Important!)                            │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  WITHOUT Deduplication:
+  
+  Frontend Pixel: Purchase ($100) ─┐
+                                    ├─→ Meta counts as 2 purchases ($200) ❌
+  Backend CAPI:   Purchase ($100) ─┘
+  
+  
+  WITH Deduplication (using event_id):
+  
+  Frontend Pixel: Purchase ($100, event_id: "order_123") ─┐
+                                                           ├─→ Meta counts as 1 purchase ($100) ✅
+  Backend CAPI:   Purchase ($100, event_id: "order_123") ─┘
+                  (Same event_id = deduplicated)
+
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    WHAT HAPPENS IF META API FAILS?                       │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Scenario: Meta API is down or slow
+  
+  ┌─────────────────┐
+  │ Customer places │
+  │ order           │
+  └────────┬────────┘
+           │
+           ▼
+  ┌───────────────────────┐
+  │ Order saved to DB     │ ✅ SUCCESS - Customer gets confirmation
+  │ Response sent (200ms) │
+  └────────┬──────────────┘
+           │
+           ▼
+  ┌───────────────────────┐
+  │ Meta tracking         │ ❌ FAILS (but async, doesn't affect customer)
+  │ (runs in background)  │
+  └────────┬──────────────┘
+           │
+           ▼
+  ┌───────────────────────┐
+  │ Error logged          │ Console: "Meta CAPI tracking error: timeout"
+  │ Customer unaffected   │ Order is still created successfully!
+  └───────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    KEY BENEFITS                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  1. ⚡ NO PERFORMANCE IMPACT
+     - Tracking runs asynchronously
+     - Customer responses are instant
+     - Failures don't break core functionality
+  
+  2. 🔒 PRIVACY PROTECTED
+     - All PII is hashed (SHA-256)
+     - Facebook can't see raw emails/phones
+     - Only used for matching to user accounts
+  
+  3. 📊 BETTER DATA
+     - Not affected by ad blockers
+     - Works on iOS with privacy settings
+     - More accurate attribution
+  
+  4. 💰 BETTER AD PERFORMANCE
+     - Lower cost per acquisition (15-30% typical)
+     - Better targeting with server data
+     - Improved ROAS (Return on Ad Spend)
+
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    EVENTS BEING TRACKED                                  │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Event                    | Trigger                    | File
+  ────────────────────────────────────────────────────────────────────────
+  Purchase                 | Order completed            | order.controller.js
+  AddToCart (Product)      | Product added to cart      | cart.controller.js
+  AddToCart (Service)      | Service added to cart      | cart.controller.js
+  CompleteRegistration     | New user registers         | auth.controller.js
+  CompleteRegistration (B2B)| B2B account created       | auth.controller.js
+
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    MONITORING & METRICS                                  │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Go to: https://business.facebook.com/events_manager
+  Select Pixel: 1230498898985591
+  
+  Metrics to watch:
+  
+  1. Event Match Quality ─────────────── Aim for >70%
+     How well events match to FB users
+     
+  2. Events Received ─────────────────── Monitor both sources
+     ├─ From Pixel (browser)
+     └─ From CAPI (server) ← Your backend
+     
+  3. Deduplication Rate ──────────────── Higher is better
+     % of duplicate events removed
+     
+  4. Data Freshness ─────────────────── Should be <1 minute
+     Time from event to receiving
+
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    ENVIRONMENT VARIABLES                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  Required in server/.env:
+  
+  META_PIXEL_ID=1230498898985591
+  META_CAPI_ACCESS_TOKEN=EAARHujoYRkcBQZA... (your token)
+  FRONTEND_URL=https://www.itrepairhub.com
+  
+  Optional for testing:
+  
+  META_TEST_EVENT_CODE=TEST12345
+
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    GETTING STARTED                                       │
+└──────────────────────────────────────────────────────────────────────────┘
+
+  1. Add environment variables to server/.env
+  2. Restart your backend: npm start
+  3. Test: Make a purchase or register
+  4. Check Meta Events Manager for events
+  5. Monitor event quality metrics weekly
+
+  That's it! You're tracking conversions like a pro! 🚀
+

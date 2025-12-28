@@ -1,0 +1,180 @@
+┌─────────────────────────────────────────────────────────────────────┐
+│           META CONVERSIONS API - SETUP CHECKLIST                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+□ STEP 1: Add Environment Variables
+  └─ Open: server/.env
+  └─ Add these lines:
+     ┌──────────────────────────────────────────────────────────────┐
+     │ META_PIXEL_ID=1230498898985591                               │
+     │ META_CAPI_ACCESS_TOKEN=EAARHujoYRkcBQZAUBl6DCvNtGRTy4C5...  │
+     │ FRONTEND_URL=https://www.itrepairhub.com                     │
+     └──────────────────────────────────────────────────────────────┘
+  └─ Save file
+
+□ STEP 2: Restart Backend Server
+  └─ Stop current server (Ctrl+C)
+  └─ Run: cd server
+  └─ Run: npm start
+  └─ Look for: "IT Repair Hub Backend API running on port 4000"
+
+□ STEP 3: Test Events (Using Meta Test Events)
+  └─ Go to: https://business.facebook.com/events_manager
+  └─ Select your Pixel: 1230498898985591
+  └─ Click "Test Events" tab
+  └─ Keep this page open
+
+□ STEP 4: Trigger Test Events
+  Test 1: Registration
+  └─ Register a new account on your site
+  └─ Check Meta Events Manager for "CompleteRegistration" event
+  └─ Event should appear within seconds ✓
+  
+  Test 2: Add to Cart
+  └─ Add a product to cart
+  └─ Check for "AddToCart" event
+  └─ Event should appear within seconds ✓
+  
+  Test 3: Purchase
+  └─ Complete an order
+  └─ Check for "Purchase" event
+  └─ Event should appear within seconds ✓
+
+□ STEP 5: Check Server Logs
+  └─ In your terminal, look for:
+     ✅ [Meta CAPI] Purchase event sent successfully
+     ✅ [Meta CAPI] AddToCart event sent successfully
+     ✅ [Meta CAPI] CompleteRegistration event sent successfully
+  
+  └─ If you see errors:
+     ❌ [Meta CAPI] Failed to send event
+     → Check access token is correct
+     → Check internet connection
+     → Check Meta Events Manager for details
+
+□ STEP 6: Monitor Event Quality (After 24 hours of data)
+  └─ Go to Meta Events Manager
+  └─ Click your Pixel
+  └─ Go to "Settings" → "Dataset Quality"
+  └─ Check metrics:
+     □ Event Match Quality: Aim for >70%
+     □ Events Received: Check both Pixel and Server
+     □ Deduplication Rate: Higher is better
+
+□ STEP 7: (Optional) Add Test Event Code for Testing
+  └─ In Meta Events Manager, copy Test Event Code
+  └─ Add to server/.env:
+     META_TEST_EVENT_CODE=TEST12345
+  └─ Restart server
+  └─ Test events will show "Test" label in Events Manager
+
+□ STEP 8: (Optional) Implement Event ID Deduplication
+  └─ Update frontend to include event IDs
+  └─ Example in checkout:
+     fbq('track', 'Purchase', {...}, {
+       eventID: 'order_123_1735430400000'
+     });
+  └─ Use same ID that backend generates
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    TROUBLESHOOTING                                  │
+└─────────────────────────────────────────────────────────────────────┘
+
+Problem: "Access token not configured"
+Solution: 
+  □ Check .env file has META_CAPI_ACCESS_TOKEN
+  □ No spaces around the = sign
+  □ Restart server after adding
+
+Problem: Events not showing in Meta
+Solution:
+  □ Wait 1-2 minutes (can have delay)
+  □ Check server logs for errors
+  □ Verify Pixel ID matches (1230498898985591)
+  □ Check access token is valid
+
+Problem: "Failed to send event" in logs
+Solution:
+  □ Check internet connection
+  □ Verify access token hasn't expired
+  □ Check Meta Events Manager for error details
+  □ Try generating new access token
+
+Problem: Low Event Match Quality (<50%)
+Solution:
+  □ Ensure customer email/phone are captured
+  □ Phone numbers need +92 country code
+  □ Include fbp and fbc cookies in requests
+  □ Wait for more data (needs 100+ events)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    SUCCESS INDICATORS                               │
+└─────────────────────────────────────────────────────────────────────┘
+
+✓ Server starts without errors
+✓ Console shows: ✅ [Meta CAPI] events sent successfully
+✓ Events appear in Meta Events Manager Test Events
+✓ Event Match Quality >70% (after 24h)
+✓ Both Pixel and Server events showing in Overview
+✓ No impact on customer experience (fast responses)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    NEXT STEPS (OPTIONAL)                            │
+└─────────────────────────────────────────────────────────────────────┘
+
+□ Add more events (InitiateCheckout, ViewContent, Contact)
+□ Implement event ID deduplication on frontend
+□ Monitor ad performance weekly
+□ A/B test different ad campaigns with better data
+□ Review and optimize based on Event Match Quality
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    FILES TO REFERENCE                               │
+└─────────────────────────────────────────────────────────────────────┘
+
+📄 META_CAPI_SETUP.md       → Quick start guide
+📄 META_CONVERSIONS_API_GUIDE.md  → Complete documentation
+📄 META_CAPI_DIAGRAM.txt    → Visual flow diagram
+📄 server/src/utils/metaConversionsAPI.js → Implementation code
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    YOUR ACCESS TOKEN INFO                           │
+└─────────────────────────────────────────────────────────────────────┘
+
+Pixel ID: 1230498898985591
+Token Created: Dec 29, 2025, 12:58 AM
+Created By: Mazhar Ali
+Permissions: Includes Dataset Quality API ✓
+
+⚠️  IMPORTANT: Save this token securely!
+Facebook doesn't store it. If lost, generate a new one.
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    ESTIMATED TIME TO SETUP                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+⏱️  5-10 minutes for complete setup
+⏱️  +24 hours for meaningful metrics
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    EXPECTED RESULTS                                 │
+└─────────────────────────────────────────────────────────────────────┘
+
+After implementation, you should see:
+📊 15-30% improvement in cost per acquisition
+📊 More stable event tracking (not blocked by ad blockers)
+📊 Better attribution of conversions to ads
+📊 Improved audience targeting
+📊 Higher ROAS (Return on Ad Spend)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    SUPPORT RESOURCES                                │
+└─────────────────────────────────────────────────────────────────────┘
+
+📚 Read the full guide: server/META_CONVERSIONS_API_GUIDE.md
+📊 Meta Events Manager: https://business.facebook.com/events_manager
+📖 Meta Docs: https://developers.facebook.com/docs/marketing-api/conversions-api
+🎓 Best Practices: Check "Dataset Quality" in Events Manager
+
+✨ You're all set! Just add those 3 environment variables and restart! ✨
+
