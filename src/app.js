@@ -29,10 +29,28 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// CORS configuration - Accept requests from everywhere
-// If CORS_ORIGIN is '*' or not set, allow all origins (using true instead of '*' because credentials: true)
+// CORS configuration - Accept requests from multiple origins
+// Support for comma-separated CORS_ORIGIN or wildcard '*'
+const corsOriginHandler = (origin, callback) => {
+  // If no CORS_ORIGIN env var or set to '*', allow all origins
+  if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') {
+    return callback(null, true);
+  }
+
+  // Parse comma-separated origins
+  const allowedOrigins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
+
+  // Allow if origin is in the list or if request has no origin (e.g., Postman, server-to-server)
+  if (!origin || allowedOrigins.includes(origin)) {
+    return callback(null, true);
+  }
+
+  // Reject origin not in allowed list
+  return callback(new Error('Not allowed by CORS'));
+};
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN === '*' || !process.env.CORS_ORIGIN ? true : process.env.CORS_ORIGIN,
+  origin: corsOriginHandler,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],

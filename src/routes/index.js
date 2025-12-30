@@ -29,7 +29,7 @@ import sectionRoutes from './section.routes.js';
 const router = Router();
 
 router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
+router.use('/user', userRoutes);
 router.use('/media', mediaRoutes);
 router.use('/consultations', consultationRoutes);
 router.use('/bookings', bookingRoutes);

@@ -137,8 +137,8 @@ export async function getDashboardOverview(req, res) {
           SUM(CASE WHEN stock_quantity > 0 AND stock_quantity <= 5 THEN 1 ELSE 0 END) as low_stock,
           SUM(stock_quantity) as total_stock_value,
           AVG(price) as avg_price,
-          SUM(CASE WHEN condition = 'new' THEN 1 ELSE 0 END) as new_products,
-          SUM(CASE WHEN condition = 'used' THEN 1 ELSE 0 END) as used_products
+          SUM(CASE WHEN \`condition\` = 'new' THEN 1 ELSE 0 END) as new_products,
+          SUM(CASE WHEN \`condition\` = 'used' THEN 1 ELSE 0 END) as used_products
         FROM products
       `),
       
@@ -463,10 +463,30 @@ export async function getOrderAnalytics(req, res) {
       fulfillmentData.cancelled = parseInt(fulfillmentData.cancelled) || 0;
     }
 
+    // Convert status_distribution values to numbers
+    const statusDistributionData = (statusDistribution[0] || []).map((item) => ({
+      period: item.period,
+      pending: parseInt(item.pending) || 0,
+      processing: parseInt(item.processing) || 0,
+      shipped: parseInt(item.shipped) || 0,
+      delivered: parseInt(item.delivered) || 0,
+      cancelled: parseInt(item.cancelled) || 0,
+    }));
+
+    // Convert top_products values to numbers
+    const topProductsData = (topProducts[0] || []).map((product) => ({
+      id: parseInt(product.id) || 0,
+      name: product.name,
+      sku: product.sku,
+      order_count: parseInt(product.order_count) || 0,
+      units_sold: parseInt(product.units_sold) || 0,
+      total_revenue: parseFloat(product.total_revenue) || 0,
+    }));
+
     return res.status(200).json({
       success: true,
       data: {
-        status_distribution: statusDistribution[0],
+        status_distribution: statusDistributionData,
         fulfillment_metrics: fulfillmentData || {
           total_orders: 0,
           delivered: 0,
@@ -475,7 +495,7 @@ export async function getOrderAnalytics(req, res) {
           cancellation_rate: 0,
           payment_completion_rate: 0,
         },
-        top_products: topProducts[0],
+        top_products: topProductsData,
       },
     });
   } catch (err) {
@@ -695,8 +715,8 @@ export async function getProductAnalytics(req, res) {
       db.query(`
         SELECT 
           SUM(stock_quantity * price) as total_inventory_value,
-          SUM(CASE WHEN condition = 'new' THEN stock_quantity * price ELSE 0 END) as new_inventory_value,
-          SUM(CASE WHEN condition = 'used' THEN stock_quantity * price ELSE 0 END) as used_inventory_value,
+          SUM(CASE WHEN \`condition\` = 'new' THEN stock_quantity * price ELSE 0 END) as new_inventory_value,
+          SUM(CASE WHEN \`condition\` = 'used' THEN stock_quantity * price ELSE 0 END) as used_inventory_value,
           COUNT(*) as total_products,
           SUM(stock_quantity) as total_units
         FROM products

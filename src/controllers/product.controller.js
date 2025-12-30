@@ -139,6 +139,112 @@ export async function getAllProducts(req, res) {
 }
 
 /**
+ * Get a single product by ID (for admin editing)
+ * Admin endpoint - returns all fields including inactive products
+ */
+export async function getProductById(req, res) {
+  try {
+    const { id } = req.params;
+    const db = getDb();
+
+    // Fetch product with all fields (no is_active filter for admin)
+    const [rows] = await db.query(
+      `SELECT 
+        p.id, 
+        p.category_id, 
+        p.name, 
+        p.slug, 
+        p.sku,
+        p.\`condition\`,
+        p.price,
+        p.discount_percentage,
+        p.stock_quantity,
+        p.short_description, 
+        p.long_description, 
+        p.specifications, 
+        p.average_rating, 
+        p.review_count, 
+        p.warranty_info, 
+        p.seo_title, 
+        p.meta_description, 
+        p.is_active, 
+        p.section,
+        pc.name as category_name,
+        pc.slug as category_slug
+      FROM products p
+      LEFT JOIN product_categories pc ON p.category_id = pc.id
+      WHERE p.id = ?
+      LIMIT 1`,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    const product = rows[0];
+
+    // Fetch images for the product
+    const [imageRows] = await db.query(
+      `SELECT id, image_url, alt_text, display_order 
+       FROM product_images 
+       WHERE product_id = ? 
+       ORDER BY display_order ASC`,
+      [product.id]
+    );
+
+    // Parse JSON specifications if present
+    if (product.specifications) {
+      try {
+        product.specifications = typeof product.specifications === 'string' 
+          ? JSON.parse(product.specifications) 
+          : product.specifications;
+      } catch (err) {
+        product.specifications = null;
+      }
+    }
+
+    // Calculate discounted price
+    const originalPrice = parseFloat(product.price) || 0;
+    const discountPercentage = parseFloat(product.discount_percentage) || 0;
+    const discountedPrice = discountPercentage > 0 
+      ? originalPrice * (1 - discountPercentage / 100)
+      : originalPrice;
+
+    // Attach images to product
+    product.images = imageRows.map(img => ({
+      id: img.id,
+      image_url: img.image_url,
+      alt_text: img.alt_text,
+      display_order: img.display_order,
+    }));
+
+    // Main image (display_order = 0) for backward compatibility
+    product.image_url = imageRows.find(img => img.display_order === 0)?.image_url || null;
+
+    // Add pricing fields
+    product.price = originalPrice;
+    product.original_price = discountPercentage > 0 ? originalPrice : null;
+    product.discounted_price = discountPercentage > 0 ? parseFloat(discountedPrice.toFixed(2)) : originalPrice;
+    product.discount_percentage = discountPercentage;
+
+    return res.status(200).json({
+      success: true,
+      data: product,
+    });
+  } catch (err) {
+    console.error('Get product by ID error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch product',
+    });
+  }
+}
+
+/**
  * Get a single product by slug
  * Public endpoint - SEO-critical for product detail pages
  * SEO-optimized: Single SELECT query with slug index, includes all SEO fields

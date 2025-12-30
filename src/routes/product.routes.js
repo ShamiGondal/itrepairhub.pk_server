@@ -3,6 +3,7 @@ import { isAuth } from '../middleware/auth.middleware.js';
 import { isAdmin } from '../middleware/admin.middleware.js';
 import {
   getAllProducts,
+  getProductById,
   getProductBySlug,
   createProduct,
   updateProduct,
@@ -16,6 +17,11 @@ const router = Router();
 
 // Public endpoints - SEO-critical for product listings and detail pages
 router.get('/', getAllProducts);
+
+// Admin endpoint - Get product by ID for editing (must come before /:slug)
+router.get('/id/:id', isAuth, isAdmin, getProductById);
+
+// Public endpoint - Get product by slug (must come after /id/:id)
 router.get('/:slug', getProductBySlug);
 
 // Admin endpoints - require authentication and admin role

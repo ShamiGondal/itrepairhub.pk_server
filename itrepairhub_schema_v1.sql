@@ -185,6 +185,7 @@ CREATE TABLE `products` (
   `meta_description` TEXT NULL,
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   `section` VARCHAR(100) NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `slug` (`slug`),
   UNIQUE KEY `sku` (`sku`),
   FOREIGN KEY (`category_id`) REFERENCES `product_categories`(`id`) ON DELETE SET NULL,
