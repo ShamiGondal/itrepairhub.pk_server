@@ -3,6 +3,7 @@ import { isAuth } from '../middleware/auth.middleware.js';
 import { isAdmin } from '../middleware/admin.middleware.js';
 import {
   getAllServices,
+  getServiceById,
   getServiceBySlug,
   createService,
   updateService,
@@ -16,6 +17,11 @@ const router = Router();
 
 // Public endpoints - SEO-critical for service listings and detail pages
 router.get('/', getAllServices);
+
+// Admin endpoint - Get service by ID for editing (must come before /:slug)
+router.get('/id/:id', isAuth, isAdmin, getServiceById);
+
+// Public endpoint - Get service by slug (must come after /id/:id)
 router.get('/:slug', getServiceBySlug);
 
 // Admin endpoints - require authentication and admin role

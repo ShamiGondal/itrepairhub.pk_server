@@ -134,6 +134,113 @@ export async function getAllServices(req, res) {
 }
 
 /**
+ * Get a single service by ID (for admin editing)
+ * Admin endpoint - returns all fields including inactive services
+ */
+export async function getServiceById(req, res) {
+  try {
+    const { id } = req.params;
+    const db = getDb();
+
+    // Fetch service with all fields (no is_active filter for admin)
+    const [rows] = await db.query(
+      `SELECT 
+        s.id, 
+        s.category_id, 
+        s.name, 
+        s.slug, 
+        s.short_description, 
+        s.long_description, 
+        s.specifications, 
+        s.service_type, 
+        s.price_type, 
+        s.price, 
+        s.discount_percentage,
+        s.average_rating, 
+        s.review_count, 
+        s.warranty_info, 
+        s.seo_title, 
+        s.meta_description, 
+        s.is_active, 
+        s.section,
+        sc.name as category_name,
+        sc.slug as category_slug
+      FROM services s
+      LEFT JOIN service_categories sc ON s.category_id = sc.id
+      WHERE s.id = ?
+      LIMIT 1`,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service not found',
+      });
+    }
+
+    const service = rows[0];
+
+    // Fetch images for the service
+    const [imageRows] = await db.query(
+      `SELECT id, image_url, alt_text, display_order 
+       FROM service_images 
+       WHERE service_id = ? 
+       ORDER BY display_order ASC`,
+      [service.id]
+    );
+
+    // Parse JSON specifications if present
+    if (service.specifications) {
+      try {
+        service.specifications = typeof service.specifications === 'string' 
+          ? JSON.parse(service.specifications) 
+          : service.specifications;
+      } catch (err) {
+        service.specifications = null;
+      }
+    }
+
+    // Calculate discounted price (only for fixed price_type)
+    const originalPrice = parseFloat(service.price) || 0;
+    const discountPercentage = parseFloat(service.discount_percentage) || 0;
+    const discountedPrice = (service.price_type === 'fixed' && discountPercentage > 0)
+      ? originalPrice * (1 - discountPercentage / 100)
+      : originalPrice;
+
+    // Attach images to service
+    service.images = imageRows.map(img => ({
+      id: img.id,
+      image_url: img.image_url,
+      alt_text: img.alt_text,
+      display_order: img.display_order,
+    }));
+
+    // Main image (display_order = 0) for backward compatibility
+    service.image_url = imageRows.find(img => img.display_order === 0)?.image_url || null;
+
+    // Add pricing fields (only for fixed price_type)
+    service.price = originalPrice;
+    service.original_price = (service.price_type === 'fixed' && discountPercentage > 0) ? originalPrice : null;
+    service.discounted_price = (service.price_type === 'fixed' && discountPercentage > 0) 
+      ? parseFloat(discountedPrice.toFixed(2)) 
+      : originalPrice;
+    service.discount_percentage = discountPercentage;
+
+    return res.status(200).json({
+      success: true,
+      data: service,
+    });
+  } catch (err) {
+    console.error('Get service by ID error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch service',
+    });
+  }
+}
+
+/**
  * Get a single service by slug
  * Public endpoint - SEO-critical for service detail pages
  * SEO-optimized: Single SELECT query with slug index, includes all SEO fields

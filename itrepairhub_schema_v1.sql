@@ -437,3 +437,65 @@ CREATE TABLE `online_queries` (
   INDEX `idx_online_queries_created` (`created_at`),
   INDEX `idx_online_queries_email` (`email`)
 ) COMMENT='Stores online queries and complaints submitted via the contact page.';
+
+-- Blog Authors (E-E-A-T)
+CREATE TABLE IF NOT EXISTS `blog_authors` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `full_name` VARCHAR(255) NOT NULL,
+  `title` VARCHAR(255) NULL COMMENT 'e.g. Senior Software Engineer & IT Consultant',
+  `bio` TEXT NULL,
+  `avatar_url` VARCHAR(1024) NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_full_name` (`full_name`)
+) COMMENT='Blog authors for E-E-A-T';
+
+-- Blog Categories (Pillar/Hub - Topic Cluster)
+CREATE TABLE IF NOT EXISTS `blog_categories` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(255) NOT NULL,
+  `slug` VARCHAR(255) NOT NULL,
+  `description` TEXT NULL,
+  `meta_title` VARCHAR(255) NULL,
+  `meta_description` TEXT NULL,
+  `link_target` VARCHAR(512) NULL COMMENT 'e.g. /services, /products?category=macbooks - where spoke links back',
+  `display_order` INT NOT NULL DEFAULT 0,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `slug` (`slug`),
+  INDEX `idx_slug` (`slug`),
+  INDEX `idx_is_active` (`is_active`)
+) COMMENT='Blog pillar categories for topic cluster';
+
+-- Blog Posts
+CREATE TABLE IF NOT EXISTS `blog_posts` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `category_id` INT NULL,
+  `author_id` INT NULL,
+  `title` VARCHAR(500) NOT NULL,
+  `slug` VARCHAR(500) NOT NULL,
+  `excerpt` TEXT NULL COMMENT 'Meta description / summary',
+  `content` LONGTEXT NULL COMMENT 'HTML content',
+  `featured_image_url` VARCHAR(1024) NULL,
+  `featured_image_alt` VARCHAR(255) NULL,
+  `meta_title` VARCHAR(255) NULL,
+  `meta_description` TEXT NULL,
+  `published_at` DATETIME NULL,
+  `last_updated_at` DATETIME NULL COMMENT 'For fact-checking / E-E-A-T',
+  `is_published` TINYINT(1) NOT NULL DEFAULT 0,
+  `related_product_ids` JSON NULL COMMENT 'For contextual internal linking',
+  `related_service_ids` JSON NULL COMMENT 'For contextual internal linking',
+  `faq_schema` JSON NULL COMMENT 'Optional FAQ for FAQ schema',
+  `link_target` VARCHAR(512) NULL COMMENT 'Override category link_target per post',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `slug` (`slug`),
+  FOREIGN KEY (`category_id`) REFERENCES `blog_categories`(`id`) ON DELETE SET NULL,
+  FOREIGN KEY (`author_id`) REFERENCES `blog_authors`(`id`) ON DELETE SET NULL,
+  INDEX `idx_slug` (`slug`),
+  INDEX `idx_category_id` (`category_id`),
+  INDEX `idx_author_id` (`author_id`),
+  INDEX `idx_published_at` (`published_at`),
+  INDEX `idx_is_published` (`is_published`)
+) COMMENT='Blog posts with SEO fields';

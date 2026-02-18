@@ -25,6 +25,8 @@ import pcBuilderRoutes from './pcBuilder.routes.js';
 import reviewRoutes from './review.routes.js';
 import onlineQueryRoutes from './onlineQuery.routes.js';
 import sectionRoutes from './section.routes.js';
+import blogRoutes from './blog.routes.js';
+import adminBlogRoutes from './admin_blog.routes.js';
 
 const router = Router();
 
@@ -54,6 +56,8 @@ router.use('/pc-builder', pcBuilderRoutes);
 router.use('/reviews', reviewRoutes);
 router.use('/online-queries', onlineQueryRoutes);
 router.use('/sections', sectionRoutes);
+router.use('/blog', blogRoutes);
+router.use('/admin/blog', adminBlogRoutes);
 
 export default router;
 

@@ -19,6 +19,8 @@ export function initDb() {
     connectionLimit: Number(process.env.DB_POOL_LIMIT || 10),
     queueLimit: 0,
     connectTimeout: 10000, // 10 seconds timeout for connection
+    enableKeepAlive: true, // Prevent ECONNRESET from idle connection closure
+    keepAliveInitialDelay: 10000, // 10 seconds before first keepalive
   };
 
   /**
